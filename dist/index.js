@@ -11,6 +11,7 @@ export default class Drawflow {
     this.connection = false;
     this.connection_ele = null;
     this.connection_selected = null;
+    this.boundConnections = null;
     this.canvas_x = 0;
     this.canvas_y = 0;
     this.pos_x = 0;
@@ -303,6 +304,7 @@ export default class Drawflow {
   }
 
   dragEnd(e) {
+    console.log('drag end', e.type)
     if(this.select_elements != null) {
       this.select_elements.remove();
       this.select_elements = null;
@@ -320,6 +322,7 @@ export default class Drawflow {
 
     if(this.drag) {
       this.dispatch('nodeMoved', this.ele_selected.id.slice(5));
+      document.getElementById('contextMenuDiv').style['display'] = 'none';
     }
 
     if(this.editor_selected) {
@@ -351,7 +354,6 @@ export default class Drawflow {
           this.updateConnectionNodes('node-'+id_output);
           this.updateConnectionNodes('node-'+id_input);
           this.dispatch('connectionCreated', { output_id: id_output, input_id: id_input, output_class:  output_class, input_class: input_class});
-
         } else {
           this.connection_ele.remove();
         }
@@ -377,7 +379,29 @@ export default class Drawflow {
 
   }
   contextmenu(e) {
+    console.log('contextmenu', e.target, e.currentTarget, this.mouse_x, this.mouse_y, e.target.parentElement.parentElement.parentElement);
     e.preventDefault();
+    
+    const parentDiv = e.target.parentElement.parentElement.parentElement;
+
+    console.log('classList=', parentDiv.classList)
+    if (parentDiv.classList.contains('drawflow-node')) {
+      const dimensions = parentDiv.getBoundingClientRect();
+      console.log('parentDiv style=', parentDiv.style['top'], parentDiv.style['left'], parentDiv.style[''])
+      console.log('parentDiv style=', dimensions.top, dimensions.left, dimensions.height)
+  
+      const regex = /[0-9]+/g
+      const top = Number(parentDiv.style['top'].match(regex)[0]);
+      const left = Number(parentDiv.style['left'].match(regex)[0]);
+      const height = Number(dimensions.height);
+      console.log(top, left, height);
+      // set styles on contextMenuDiv
+      document.getElementById('contextMenuDiv').style.top = top + height + 'px';
+      document.getElementById('contextMenuDiv').style.left = left + 'px';
+      document.getElementById('contextMenuDiv').style.display = 'block';
+    }
+
+
     if(this.editor_mode === 'fixed') {
       return false;
     }
@@ -535,6 +559,10 @@ export default class Drawflow {
   }
 
   updateConnectionNodes(id) {
+    console.log('updateconnection')
+
+    document.getElementById('contextMenuDiv').style['display'] = 'none';
+
     // Aquí nos quedamos;
     const idSearch = 'node_in_'+id;
     const idSearchOut = 'node_out_'+id;
@@ -880,7 +908,8 @@ export default class Drawflow {
         return item.node === listclass[2].slice(14) && item.input === listclass[3]
       });
       this.drawflow.drawflow[this.module].data[listclass[1].slice(13)].inputs[listclass[4]].connections.splice(index_in,1);
-      this.dispatch('connectionRemoved', { output_id: listclass[2].slice(14), input_id: listclass[1].slice(13), output_class: listclass[3], input_class: listclass[4] } );
+      this.boundConnections = { output_id: listclass[2].slice(14), input_id: listclass[1].slice(13), output_class: listclass[3], input_class: listclass[4] }
+      this.dispatch('connectionRemoved', this.boundConnections );
       this.connection_selected = null;
     }
   }
@@ -1008,13 +1037,19 @@ export default class Drawflow {
   }
 
   clearModuleSelected() {
+    console.log('clearmoduleselected')
     this.precanvas.innerHTML = "";
     this.drawflow.drawflow[this.module] =  { "data": {} };
+    const elements = document.getElementsByClassName('drag-drawflow');
+    for (let i = 0; i < elements.length; i++ ) {
+      elements[i].style['display'] = 'block'
+    }
   }
 
   clear () {
     this.precanvas.innerHTML = "";
     this.drawflow = { "drawflow": { "Home": { "data": {} }}};
+
   }
   export () {
     return JSON.parse(JSON.stringify(this.drawflow));
@@ -1075,5 +1110,40 @@ export default class Drawflow {
            listener(details);
        });
    }
+
+  //  function to remove elements if there are no input/output links
+  removeUnboundConnections() {
+    // console.log('connection =', connection, connection.input_id)
+    console.log(this.drawflow.drawflow[this.module].data);   // get reference to 'data' object
+    const data = this.drawflow.drawflow[this.module].data;
+    //  map over editor.drawflow.drawflow[editor.module].data (Object.keys)
+    // if 'inputs' and 'outputs' objects have no keys
+    // delete all elements with id 'node-number' (number is key of an object we map over)
+    // debugger;
+    console.log('removeunboundconnections data=', data)
+    //  map over connections with ids of 'input_id' and 'output_id' from connection object
+    const arrayOfIds = [this.boundConnections.input_id, this.boundConnections.output_id]
+    arrayOfIds.forEach(id => {
+      console.log('id=', id)
+      if (
+        // if length of every 'connections' array found in all objects referenced by 'inputs' and 'outputs' is 0
+        Object.keys(data[id].inputs).every(key => data[id].inputs[key].connections.length === 0) &&
+        Object.keys(data[id].outputs).every(key => data[id].outputs[key].connections.length === 0)
+      ) {
+        // delete node with id = 'node-id of input or output'
+        
+        const elementToRemove = document.getElementById(`node-${id}`);
+      //  if (elementToRemove=== null) {
+      //    debugger;
+      //    return;
+      //  };
+        elementToRemove.parentNode.removeChild(elementToRemove);
+
+        // restore removed elements in left panel
+        toggleDragListItem(data[id].name)
+      }
+
+    })
+  }
 
 }
